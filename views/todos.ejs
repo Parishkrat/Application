@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+<h1>Welcome, <%= user %></h1>
+
+<form method="POST" action="/todos">
+  <input name="title" placeholder="New Todo" required />
+  <button type="submit">Add Todo</button>
+</form>
+
+<ul>
+  <% todos.forEach(todo => { %>
+    <li>
+      <form action="/todos/<%= todo._id %>/update" method="POST" style="display:inline;">
+        <input name="title" value="<%= todo.title %>" />
+        <button type="submit">Update</button>
+      </form>
+      <form action="/todos/<%= todo._id %>/delete" method="POST" style="display:inline;">
+        <button type="submit">Delete</button>
+      </form>
+    </li>
+  <% }) %>
+</ul>
+
+<form method="POST" action="/users/logout">
+  <button type="submit">Logout</button>
+</form>
+</body>
+</html>
