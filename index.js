@@ -3,40 +3,60 @@ const bcrypt = require('bcrypt');
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
 const session = require('express-session');
+const path = require('path');
 const User = require('./models/user');
 const Todo = require('./models/Todo');
 
 dotenv.config();
 
 const app = express();
-app.use(express.json());
-
-// Set up session middleware
-app.use(session({
-  secret: 'your-session-secret', 
-  resave: false,
-  saveUninitialized: false,
-  cookie: { secure: false } 
-}));
-
 const PORT = process.env.PORT;
 const DATABASE_URL = process.env.DATABASE_URL;
 
-// Middleware to check if user is logged in
+
+
+// Middlewares
+app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // For EJS form data
+app.use(session({
+  secret: 'your-session-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false }
+}));
+
+// EJS setup
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+
+// Middleware to protect routes
 function requireLogin(req, res, next) {
   if (!req.session.user) {
-    return res.status(401).send('You must log in first');
+    return res.redirect('/login');
   }
   next();
 }
 
-// Register
+// ==== ROUTES ====
+
+// Home - show todos
+app.get('/', requireLogin, async (req, res) => {
+  const todos = await Todo.find({ owner: req.session.user.name });
+  res.render('todos', { todos, user: req.session.user.name });
+});
+
+// Register page
+app.get('/register', (req, res) => {
+  res.render('register');
+});
+
+// Register user
 app.post('/users', async (req, res) => {
   try {
     const hashedPassword = await bcrypt.hash(req.body.password, 10);
     const user = new User({ name: req.body.name, password: hashedPassword });
     await user.save();
-    res.status(201).send('User registered');
+    res.redirect('/login');
   } catch (err) {
     if (err.code === 11000) {
       res.status(400).send('Username already taken');
@@ -46,7 +66,12 @@ app.post('/users', async (req, res) => {
   }
 });
 
-// Login
+// Login page
+app.get('/login', (req, res) => {
+  res.render('login');
+});
+
+// Login user
 app.post('/users/login', async (req, res) => {
   const user = await User.findOne({ name: req.body.name });
   if (!user) return res.status(400).send('Cannot find user');
@@ -54,19 +79,19 @@ app.post('/users/login', async (req, res) => {
   const match = await bcrypt.compare(req.body.password, user.password);
   if (!match) return res.status(401).send('Incorrect password');
 
-  req.session.user = { name: user.name }; // Store user info in session
-  res.send('Logged in successfully');
+  req.session.user = { name: user.name };
+  res.redirect('/');
 });
 
-// Logout (optional)
+// Logout
 app.post('/users/logout', (req, res) => {
   req.session.destroy(err => {
     if (err) return res.status(500).send('Logout failed');
-    res.send('Logged out');
+    res.redirect('/login');
   });
 });
 
-// Create Todo (protected)
+// Create todo
 app.post('/todos', requireLogin, async (req, res) => {
   try {
     const todo = new Todo({
@@ -74,23 +99,36 @@ app.post('/todos', requireLogin, async (req, res) => {
       owner: req.session.user.name
     });
     await todo.save();
-    res.status(201).json(todo);
+    res.redirect('/');
   } catch (err) {
     res.status(500).send('Failed to create todo');
   }
 });
 
-// Get Todos (protected)
-app.get('/todos', requireLogin, async (req, res) => {
+// Update todo
+app.post('/todos/:id/update', requireLogin, async (req, res) => {
   try {
-    const userTodos = await Todo.find({ owner: req.session.user.name });
-    res.json(userTodos);
+    await Todo.findOneAndUpdate(
+      { _id: req.params.id, owner: req.session.user.name },
+      { title: req.body.title }
+    );
+    res.redirect('/');
   } catch (err) {
-    res.status(500).send('Failed to fetch todos');
+    res.status(500).send('Update failed');
   }
 });
 
-// Connect to DB and start server
+// Delete todo
+app.post('/todos/:id/delete', requireLogin, async (req, res) => {
+  try {
+    await Todo.findOneAndDelete({ _id: req.params.id, owner: req.session.user.name });
+    res.redirect('/');
+  } catch (err) {
+    res.status(500).send('Delete failed');
+  }
+});
+
+// DB connection
 mongoose.connect(DATABASE_URL)
   .then(() => {
     console.log('DATABASE CONNECTION SUCCESSFUL');
