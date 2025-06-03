@@ -1,34 +1,111 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Todo List</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+      background-color: #f4f4f4;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+
+    form {
+      margin: 15px 0;
+    }
+
+    input[type="text"], input[name="title"] {
+      padding: 10px;
+      width: 70%;
+      margin-right: 10px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      padding: 10px 14px;
+      background-color: #4CAF50;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    li {
+      background-color: white;
+      margin: 8px 0;
+      padding: 10px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    li form {
+      display: inline;
+    }
+
+    li input[type="text"] {
+      width: auto;
+    }
+
+    .logout-button {
+      display: block;
+      width: 100%;
+      margin-top: 30px;
+      background-color: #e53935;
+    }
+
+    .logout-button:hover {
+      background-color: #c62828;
+    }
+  </style>
 </head>
 <body>
-<h1>Welcome, <%= user %></h1>
 
-<form method="POST" action="/todos">
-  <input name="title" placeholder="New Todo" required />
-  <button type="submit">Add Todo</button>
-</form>
+  <h1>Welcome, <%= user %></h1>
 
-<ul>
-  <% todos.forEach(todo => { %>
-    <li>
-      <form action="/todos/<%= todo._id %>/update" method="POST" style="display:inline;">
-        <input name="title" value="<%= todo.title %>" />
-        <button type="submit">Update</button>
-      </form>
-      <form action="/todos/<%= todo._id %>/delete" method="POST" style="display:inline;">
-        <button type="submit">Delete</button>
-      </form>
-    </li>
-  <% }) %>
-</ul>
+  <form method="POST" action="/todos">
+    <input name="title" placeholder="New Todo" required />
+    <button type="submit">Add Todo</button>
+  </form>
 
-<form method="POST" action="/users/logout">
-  <button type="submit">Logout</button>
-</form>
+  <ul>
+    <% todos.forEach(todo => { %>
+      <li>
+        <form action="/todos/<%= todo._id %>/update" method="POST" style="display:inline;">
+          <input name="title" value="<%= todo.title %>" />
+          <button type="submit">Update</button>
+        </form>
+        <form action="/todos/<%= todo._id %>/delete" method="POST" style="display:inline;">
+          <button type="submit">Delete</button>
+        </form>
+      </li>
+    <% }) %>
+  </ul>
+
+  <form method="POST" action="/users/logout">
+    <button class="logout-button" type="submit">Logout</button>
+  </form>
+
 </body>
 </html>
