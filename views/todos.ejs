@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Todo List</title>
+    <style>
+      /* --- Reset & base --- */
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 600px;
+        margin: 40px auto;
+        padding: 20px 30px;
+        background: #f9fafb;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+        color: #222;
+      }
+
+      h1,
+      h2 {
+        text-align: center;
+        color: #333;
+        margin-bottom: 20px;
+      }
+
+      /* --- Form styling --- */
+      form {
+        margin-bottom: 25px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+
+      input[type="text"],
+      input[type="email"],
+      input[name="title"],
+      select {
+        padding: 10px;
+        width: 100%;
+        max-width: 100%;
+        border-radius: 6px;
+        border: 1.5px solid #ccc;
+        font-size: 1rem;
+        transition: border-color 0.3s;
+      }
+
+      input[type="text"]:focus,
+      input[type="email"]:focus,
+      input[name="title"]:focus,
+      select:focus {
+        border-color: #4caf50;
+        outline: none;
+      }
+
+      label {
+        font-weight: 600;
+        margin-bottom: 6px;
+        display: block;
+      }
+
+      /* Share Invite Form specific */
+      .share-invite-form {
+        display: block;
+      }
+
+      .share-invite-form .form-group {
+        margin-bottom: 16px;
+      }
+
+      /* --- Buttons --- */
+      button {
+        padding: 10px 16px;
+        background-color: #4caf50;
+        border: none;
+        border-radius: 6px;
+        color: white;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.3s;
+        font-size: 1rem;
+      }
+
+      button:hover {
+        background-color: #45a049;
+      }
+
+      /* --- Todo list --- */
+      ul {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 30px 0;
+      }
+
+      li {
+        background: white;
+        margin-bottom: 20px;
+        padding: 18px;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        box-shadow: 0 1px 4px rgb(0 0 0 / 0.08);
+      }
+
+      /* Form groups inside each todo */
+      li form {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+
+      li input[type="text"] {
+        flex: 1;
+        min-width: 180px;
+        padding: 8px;
+        font-size: 1rem;
+        border: 1.5px solid #ccc;
+        border-radius: 6px;
+        transition: border-color 0.3s;
+      }
+
+      li input[type="text"]:focus {
+        border-color: #4caf50;
+        outline: none;
+      }
+
+      li select {
+        padding: 8px;
+        font-size: 1rem;
+        border: 1.5px solid #ccc;
+        border-radius: 6px;
+        transition: border-color 0.3s;
+      }
+
+      li select:focus {
+        border-color: #4caf50;
+        outline: none;
+      }
+
+      /* Buttons inside todos */
+      li button {
+        padding: 8px 12px;
+        font-size: 0.9rem;
+      }
+
+      /* --- Shared invites list --- */
+      h2 {
+        margin-top: 40px;
+        margin-bottom: 15px;
+        font-weight: 700;
+        color: #555;
+      }
+
+      ul.shared-list li {
+        background: #eef6f2;
+        font-weight: 600;
+        color: #333;
+        padding: 8px 15px;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        display: block;
+      }
+
+      /* --- Logout button --- */
+      .logout-button {
+        display: block;
+        width: 100%;
+        margin-top: 40px;
+        background-color: #e53935;
+        font-weight: 700;
+        font-size: 1.1rem;
+        padding: 12px;
+        border-radius: 8px;
+        transition: background-color 0.3s;
+      }
+
+      .logout-button:hover {
+        background-color: #c62828;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Welcome, <%= user %></h1>
+
+    <!-- Add New Todo -->
+    <form method="POST" action="/todos">
+      <input name="title" placeholder="New Todo" required />
+      <button type="submit">Add Todo</button>
+    </form>
+
+    <!-- Todo List -->
+    <ul>
+      <% todos.forEach(todo => { const role = (todo.owner === user) ? 'owner' :
+      (todo.sharedWith.find(u => u.name === user)?.role || ''); %>
+      <li>
+        <!-- ✅ Update Form: Owner or Editor -->
+        <% if (role === 'owner' || role === 'editor') { %>
+        <form action="/todos/<%= todo._id %>/update" method="POST">
+          <input name="title" value="<%= todo.title %>" required />
+          <button type="submit">Update</button>
+        </form>
+        <% } else { %>
+        <!-- 👁️ Viewer or no role -->
+        <p><%= todo.title %></p>
+        <% } %>
+
+        <!-- ✅ Delete: Only owner -->
+        <% if (role === 'owner') { %>
+        <form action="/todos/<%= todo._id %>/delete" method="POST">
+          <button type="submit">Delete</button>
+        </form>
+        <% } %>
+
+        <!-- ✅ Share: Only owner -->
+        <% if (role === 'owner') { %>
+        <form method="POST" action="/share">
+          <input type="hidden" name="todoId" value="<%= todo._id %>" />
+          <input
+            type="text"
+            name="shareWithName"
+            placeholder="Username to share"
+            required
+          />
+          <select name="role">
+            <option value="viewer">Viewer</option>
+            <option value="editor">Editor</option>
+          </select>
+          <button type="submit">Share</button>
+        </form>
+        <% } %>
+
+        <!-- ✅ Shared With Display -->
+        <% if (todo.sharedWith && todo.sharedWith.length > 0) { %>
+        <div>
+          <strong>Shared With:</strong>
+          <ul>
+            <% todo.sharedWith.forEach(user => { %>
+            <li><%= user.name %> (<%= user.role %>)</li>
+            <% }) %>
+          </ul>
+        </div>
+        <% } %>
+      </li>
+      <% }); %>
+    </ul>
+
+    <!-- Share Invite Form -->
+    <form action="/share-invite" method="POST" class="share-invite-form">
+      <div class="form-group">
+        <label for="name">Name:</label>
+        <input id="name" type="text" name="name" required />
+      </div>
+      <div class="form-group">
+        <label for="email">Email:</label>
+        <input id="email" type="email" name="email" required />
+      </div>
+      <button type="submit">Share Invite</button>
+    </form>
+
+    <!-- People Table (Registered via Invite) -->
+    <h2>Shared With:</h2>
+    <ul class="shared-list">
+      <% people.forEach(person => { %>
+      <li><%= person.name %> - <%= person.email %></li>
+      <% }); %>
+    </ul>
+
+    <!-- Logout -->
+    <form method="POST" action="/users/logout">
+      <button class="logout-button" type="submit">Logout</button>
+    </form>
+  </body>
+</html>
