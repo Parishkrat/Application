@@ -1,27 +1,19 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
-const crypto = require("crypto"); // for generating tokens
+const crypto = require("crypto");
+const dotenv = require("dotenv");
+const nodemailer = require("nodemailer");
+
 const User = require("../models/user.js");
 const Todo = require("../models/Todo.js");
-const requireLogin = require("../middleware/auth.js");
 const Person = require("../models/person.js");
-const nodemailer = require("nodemailer");
-const userApp = express.Router();
-const dotenv = require("dotenv");
+const requireLogin = require("../middleware/auth.js");
+const { getUserRole } = require("../middleware/permissions");
 
 dotenv.config();
+const userApp = express.Router();
 
-// Home - show todos
-// userApp.get("/", requireLogin, async (req, res) => {
-//   try {
-//     const todos = await Todo.find({ owner: req.session.user.name });
-//     const people = await Person.find({}); // fetch people from DB
-//     res.render("todos", { todos, people, user: req.session.user.name });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).send("Failed to load data");
-//   }
-// });
+// ================= AUTH ================= //
 
 // Register page (with optional invite token)
 userApp.get("/register", async (req, res) => {
@@ -38,9 +30,8 @@ userApp.get("/register", async (req, res) => {
 // Register user
 userApp.post("/users", async (req, res) => {
   try {
-    const { name, password, token } = req.body;
+    const { name, email, password, token } = req.body;
 
-    // If registering with invite token, validate it
     if (token) {
       const invitedPerson = await Person.findOne({ inviteToken: token });
       if (!invitedPerson) {
@@ -49,10 +40,13 @@ userApp.post("/users", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, password: hashedPassword });
+    const user = new User({
+      name,
+      email: email.toLowerCase(),
+      password: hashedPassword,
+    });
     await user.save();
 
-    // If invite token was used, clear it (so it can't be reused)
     if (token) {
       await Person.updateOne(
         { inviteToken: token },
@@ -63,8 +57,9 @@ userApp.post("/users", async (req, res) => {
     res.redirect("/login");
   } catch (err) {
     if (err.code === 11000) {
-      res.status(400).send("Username already taken");
+      res.status(400).send("Email already registered");
     } else {
+      console.error(err);
       res.status(500).send("Registration failed");
     }
   }
@@ -77,14 +72,20 @@ userApp.get("/login", (req, res) => {
 
 // Login user
 userApp.post("/users/login", async (req, res) => {
-  const user = await User.findOne({ name: req.body.name });
-  if (!user) return res.status(400).send("Cannot find user");
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(400).send("Cannot find user");
 
-  const match = await bcrypt.compare(req.body.password, user.password);
-  if (!match) return res.status(401).send("Incorrect password");
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).send("Incorrect password");
 
-  req.session.user = { name: user.name };
-  res.redirect("/");
+    req.session.user = { email: user.email, name: user.name };
+    res.redirect("/");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Login failed");
+  }
 });
 
 // Logout
@@ -95,33 +96,34 @@ userApp.post("/users/logout", (req, res) => {
   });
 });
 
-// mail.
+// ================= EMAIL INVITE ================= //
+
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: process.env.EMAIL_USER, // your email address
-    pass: process.env.EMAIL_PASS, // your email password or app-specific password
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
 userApp.post("/share-invite", requireLogin, async (req, res) => {
   try {
     const { name, email } = req.body;
-
-    // Generate a unique invite token
     const inviteToken = crypto.randomBytes(20).toString("hex");
 
-    const sharedPerson = new Person({ name, email, inviteToken });
+    const sharedPerson = new Person({
+      name,
+      email: email.toLowerCase(),
+      inviteToken,
+    });
     await sharedPerson.save();
 
     const inviteLink = `http://localhost:3000/register?token=${inviteToken}`;
 
-    // Prepare email options
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
       subject: "You have a new invite!",
-      text: `Hello ${name},\n\nYou have been invited! Click here to register: ${inviteLink}`,
       html: `
         <p>Hello <b>${name}</b>,</p>
         <p>You have been invited! 🎉</p>
@@ -129,9 +131,7 @@ userApp.post("/share-invite", requireLogin, async (req, res) => {
       `,
     };
 
-    // Send the email
     await transporter.sendMail(mailOptions);
-
     res.redirect("/");
   } catch (err) {
     console.error("Share invite error:", err);
@@ -139,44 +139,63 @@ userApp.post("/share-invite", requireLogin, async (req, res) => {
   }
 });
 
+// ================= TODOS ================= //
+
+// Home
 userApp.get("/", requireLogin, async (req, res) => {
   try {
-    const userName = req.session.user.name;
+    const userEmail = req.session.user.email;
 
     const todos = await Todo.find({
-      $or: [{ owner: userName }, { "sharedWith.name": userName }],
+      $or: [{ owner: userEmail }, { "sharedWith.email": userEmail }],
     });
 
     const people = await Person.find({});
-    res.render("todos", { todos, people, user: userName });
+    res.render("todos", { todos, people, userEmail });
   } catch (err) {
     console.error(err);
     res.status(500).send("Failed to load todos");
   }
 });
 
+userApp.get("/upgrade", requireLogin, async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.session.user.email });
+    res.render("upgrade", { user, razorpayKeyId: process.env.RAZORPAY_KEY_ID });
+  } catch (err) {
+    console.error("Upgrade page error:", err);
+    res.status(500).send("Unable to load upgrade page");
+  }
+});
+
+// Share todo
+
 userApp.post("/share", requireLogin, async (req, res) => {
   try {
-    const { todoId, shareWithName, role } = req.body;
+    const { todoId, shareWithEmail, role } = req.body;
+    const user = await User.findOne({ email: req.session.user.email });
+
+    // Free users cannot share as editor
+    if (!user.isPaid && role === "editor") {
+      return res.redirect("/upgrade");
+    }
+
     const validRoles = ["editor", "viewer"];
     if (!validRoles.includes(role)) return res.status(400).send("Invalid role");
 
     const todo = await Todo.findById(todoId);
     if (!todo) return res.status(404).send("Todo not found");
 
-    if (todo.owner !== req.session.user.name) {
+    if (todo.owner !== user.email) {
       return res.status(403).send("Only the owner can share");
     }
 
-    // ✅ Ensure sharedWith exists
-    if (!Array.isArray(todo.sharedWith)) {
-      todo.sharedWith = [];
-    }
+    const alreadyShared = todo.sharedWith.some(
+      (u) => u.email === shareWithEmail.toLowerCase()
+    );
+    if (alreadyShared) return res.status(400).send("Already shared");
 
-    const alreadyShared = todo.sharedWith.some((u) => u.name === shareWithName);
-    if (alreadyShared) return res.status(400).send("User already shared with");
-
-    todo.sharedWith.push({ name: shareWithName, role });
+    todo.sharedWith.push({ email: shareWithEmail.toLowerCase(), role });
     await todo.save();
 
     res.redirect("/");
@@ -186,14 +205,13 @@ userApp.post("/share", requireLogin, async (req, res) => {
   }
 });
 
-const { getUserRole } = require("../middleware/permissions");
-
+// Update todo
 userApp.post("/todos/:id/update", requireLogin, async (req, res) => {
   try {
     const todo = await Todo.findById(req.params.id);
     if (!todo) return res.status(404).send("Todo not found");
 
-    const role = getUserRole(todo, req.session.user.name);
+    const role = getUserRole(todo, req.session.user.email);
 
     if (!role || (role !== "owner" && role !== "editor")) {
       return res.status(403).send("No permission to edit");
@@ -206,6 +224,81 @@ userApp.post("/todos/:id/update", requireLogin, async (req, res) => {
   } catch (err) {
     console.error("Update error:", err);
     res.status(500).send("Update failed");
+  }
+});
+
+// Delete todo (owner only)
+userApp.post("/todos/:id/delete", requireLogin, async (req, res) => {
+  try {
+    const todo = await Todo.findOneAndDelete({
+      _id: req.params.id,
+      owner: req.session.user.email,
+    });
+    if (!todo) return res.status(404).send("Todo not found or not owned");
+
+    res.redirect("/");
+  } catch (err) {
+    console.error("Delete error:", err);
+    res.status(500).send("Delete failed");
+  }
+});
+
+// Create a new todo
+userApp.post("/todos", requireLogin, async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.session.user.email });
+
+    // Free users can only create 3
+    if (!user.isPaid) {
+      const count = await Todo.countDocuments({ owner: user.email });
+      if (count >= 3) {
+        return res.redirect("/upgrade");
+      }
+    }
+
+    const todo = new Todo({
+      title: req.body.title,
+      owner: user.email,
+      sharedWith: [],
+    });
+    await todo.save();
+
+    res.redirect("/");
+  } catch (err) {
+    console.error("Create todo error:", err);
+    res.status(500).send("Failed to create todo");
+  }
+});
+
+// Update role of a shared user
+userApp.post("/share/update-role", requireLogin, async (req, res) => {
+  try {
+    const { todoId, shareWithEmail, role } = req.body;
+    const validRoles = ["editor", "viewer"];
+    if (!validRoles.includes(role)) return res.status(400).send("Invalid role");
+
+    const todo = await Todo.findById(todoId);
+    if (!todo) return res.status(404).send("Todo not found");
+
+    // Only owner can change roles
+    if (todo.owner !== req.session.user.email) {
+      return res.status(403).send("Only the owner can change roles");
+    }
+
+    // Find the shared user and update role
+    const sharedUser = todo.sharedWith.find(
+      (u) => u.email === shareWithEmail.toLowerCase()
+    );
+    if (!sharedUser)
+      return res.status(404).send("User not found in shared list");
+
+    sharedUser.role = role;
+    await todo.save();
+
+    res.redirect("/");
+  } catch (err) {
+    console.error("Update role error:", err);
+    res.status(500).send("Failed to update role");
   }
 });
 
