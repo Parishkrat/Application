@@ -1,16 +1,31 @@
-// models/Todo.js
 const mongoose = require("mongoose");
 
 const todoSchema = new mongoose.Schema({
   title: { type: String, required: true },
   completed: { type: Boolean, default: false },
-  owner: { type: String, required: true }, // Owner username or you could use ObjectId referencing User
 
-  // Add sharedWith array for sharing info:
+  // Use email as owner (primary identifier)
+  owner: {
+    type: String,
+    required: true,
+    lowercase: true,
+    trim: true,
+  },
+
+  // Shared with array based on email
   sharedWith: [
     {
-      name: { type: String, required: true }, // username of shared user
-      role: { type: String, enum: ["viewer", "editor"], required: true },
+      email: {
+        type: String,
+        required: true,
+        lowercase: true,
+        trim: true,
+      },
+      role: {
+        type: String,
+        enum: ["viewer", "editor"],
+        required: true,
+      },
     },
   ],
 });
